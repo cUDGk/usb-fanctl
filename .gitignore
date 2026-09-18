@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+# 自動生成物: DSN/SES と各種ログ (再生成できる)
+fanctl_*/output/
+fanctl_*/*.dsn
+fanctl_*/*.ses
+fanctl_*/*-backups/
+# データシート PDF は容量が大きいのでリポジトリに入れない
+datasheets/

@@ -1,0 +1,59 @@
+{
+    "$schema": "https://schemas.kicad.org/erc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-09-17T22:38:22",
+    "ignored_checks": [
+        {
+            "description": "Global label only appears once in the schematic",
+            "key": "single_global_label"
+        },
+        {
+            "description": "Four connection points are joined together",
+            "key": "four_way_junction"
+        },
+        {
+            "description": "SPICE model issue",
+            "key": "simulation_model_issue"
+        },
+        {
+            "description": "Assigned footprint doesn't match footprint filters",
+            "key": "footprint_filter"
+        }
+    ],
+    "included_severities": [
+        "error"
+    ],
+    "kicad_version": "10.0.5",
+    "sheets": [
+        {
+            "path": "/",
+            "uuid_path": "/49c63721-5a20-5a3d-862a-da8dff1adab3",
+            "violations": [
+                {
+                    "description": "ピンのタイプ Power output と Power output が接続されています",
+                    "items": [
+                        {
+                            "description": "Symbol U1 ピン 11 [VOUT, Power output, Line]",
+                            "pos": {
+                                "x": 5.0165,
+                                "y": 0.635
+                            },
+                            "uuid": "17f070ad-c608-5de0-acb6-c17322a49a85"
+                        },
+                        {
+                            "description": "Symbol U1 ピン 26 [VOUT, Power output, Line]",
+                            "pos": {
+                                "x": 5.0165,
+                                "y": 0.6604
+                            },
+                            "uuid": "3624bdf9-8a33-5b98-8d86-467c1a2a76f7"
+                        }
+                    ],
+                    "severity": "error",
+                    "type": "pin_to_pin"
+                }
+            ]
+        }
+    ],
+    "source": "fanctl_a.kicad_sch"
+}
