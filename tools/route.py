@@ -21,6 +21,6 @@ with log.open("w", encoding="utf-8") as out:
     proc = subprocess.run(
         [JAVA, "-jar", JAR, "-de", str(dsn), "-do", str(ses), "-mp", passes,
          "--gui.enabled=false", "--api_server.enabled=false"],
-        stdout=out, stderr=subprocess.STDOUT, timeout=1500,
+        stdout=out, stderr=subprocess.STDOUT, timeout=3600,
     )
 print("exit", proc.returncode, "ses" if ses.exists() else "NO SES", log)

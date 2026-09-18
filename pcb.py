@@ -30,7 +30,10 @@ X0, Y0, W, H = 100.0, 100.0, 90.0, 34.0
 X1, Y1 = X0 + W, Y0 + H
 POWER_NETS = {"VBUS_PC", "VBUS_EXT", "VSYS", "VOUT_RAW", "+12V", "SW1", "SW2"}
 # GND も自動配線から外し、パッド脇の自動ビアで In1 に落とす
-UNROUTED = POWER_NETS | {"GND"}
+# 完全に手配線したネットも自動配線から外す。銅箔は DSN に残るので障害物としては効く。
+# (長い手配線を入れると freerouting がパス途中でハングするため、対象から外すのが確実)
+HAND_ROUTED = {"ADC_IOUT", "ADC_ILM_EXT", "EXT_OVLO", "QSPI_SD2"}
+UNROUTED = POWER_NETS | {"GND"} | HAND_ROUTED
 
 # --- 配置 ------------------------------------------------------------------
 COMMON = {
@@ -263,10 +266,11 @@ def _power_stage(L: Layout):
     L.vias += [("BB_EN", *en_a), ("BB_EN", *en_b)]
     # SCL/SDA は U1 左列で BB_EN に挟まれて抜けられない。C12 下の空きチャネルを 0.6mm ピッチで
     # 平行に走らせ、ビアの位置を x 方向にずらして裏面へ渡す
-    L.routes.append(("I2C_SCL", "F", 0.2, [L.pad("U1", "5"), (154.4, 117.5), (153.9, 118.0), (152.2, 118.0)]))
-    L.vias.append(("I2C_SCL", 152.2, 118.0))
-    L.routes.append(("I2C_SDA", "F", 0.2, [L.pad("U1", "6"), (154.2, 118.0), (153.5, 118.65), (151.3, 118.65)]))
-    L.vias.append(("I2C_SDA", 151.3, 118.65))
+    L.routes.append(("I2C_SCL", "F", 0.2, [L.pad("U1", "5"), (154.5, 117.5), (153.8, 117.95), (152.2, 117.95)]))
+    L.vias.append(("I2C_SCL", 152.2, 117.95))
+    # SCL の逃げ (y=117.5 → 117.95) と広がる向きに曲げる。U1 の角パッド (pad 7) には y=118.2 より上で近づかない
+    L.routes.append(("I2C_SDA", "F", 0.2, [L.pad("U1", "6"), (154.6, 118.0), (153.8, 118.9), (151.6, 119.4), (151.0, 119.4)]))
+    L.vias.append(("I2C_SDA", 151.0, 119.4))
     L.routes.append(("GND", "F", 0.3, [L.pad("C12", "2"), (152.05, 114.75)]))
     L.vias.append(("GND", 152.05, 114.75))
     L.vias.append(("BB_INT", 159.75, 118.25))
@@ -302,9 +306,52 @@ def _power_stage(L: Layout):
         fx, fy = L.pad("U7", flash_pin)
         L.routes.append((net, "F", 0.2, [(mx, my), (mx, y), (fx, y), (fx, fy)]))
     # ADC_IOUT は MCU 左側から出て基板を横断する。左の密集列の隙間でビアに落としておく
-    # ビアは隣ピン (ADC_VSYS) が西へ抜ける y=116.0 の通路を塞がないよう斜め下に置く
-    L.routes.append(("ADC_IOUT", "F", 0.2, [L.pad("U6", "39"), (125.9, 116.4), (125.25, 117.4)]))
-    L.vias.append(("ADC_IOUT", 125.25, 117.4))
+    # MCU 左側の ADC 3 本 (38:VSYS / 39:IOUT / 40:ILM_EXT) は 0.4mm ピッチで並んでいるので、
+    # ビアを x 方向にずらして扇形に逃がす。38 は西へ直進できるよう通路を空けておく
+    # 39 (IOUT) と 40 (ILM_EXT) はどちらも基板東端まで渡るので、2 本まとめて上辺の空き地を通す。
+    # 38 (VSYS) は R1 へ北西に抜けるので y=116.0 の通路を空けたまま残す
+    L.routes.append(("ADC_IOUT", "F", 0.2, [L.pad("U6", "39"), (121.4, 116.4)]))
+    # 西端でも ILM のレーン (y=101.5) を跨ぐので、その区間だけ表面に上げる
+    iout_h1, iout_h2 = (121.4, 102.6), (121.4, 100.9)
+    L.routes.append(("ADC_IOUT", "B", 0.2, [(121.4, 116.4), iout_h1]))
+    L.routes.append(("ADC_IOUT", "F", 0.2, [iout_h1, iout_h2]))
+    L.routes.append(("ADC_IOUT", "B", 0.2, [iout_h2, (166.0, 100.9),
+                                            (166.0, 119.8), (165.3, 119.8)]))
+    L.vias += [("ADC_IOUT", *iout_h1), ("ADC_IOUT", *iout_h2)]
+    L.routes.append(("ADC_IOUT", "F", 0.2, [(165.3, 119.8), L.pad("C25", "1"), L.pad("R31", "2")]))
+    L.vias += [("ADC_IOUT", 121.4, 116.4), ("ADC_IOUT", 165.3, 119.8)]
+    # ADC_ILM_EXT は外部 PD 側 (R23) まで基板を横断する。上辺の空き地を裏面で East へ渡す
+    # ILM は IOUT (x=121.4 / y=101.5) の外側を通す。内側だと上辺で IOUT の横引きと交差する
+    ilm_a, ilm_b = (120.2, 117.6), (171.5, 113.4)
+    L.routes.append(("ADC_ILM_EXT", "F", 0.2, [L.pad("U6", "40"), (123.2, 116.8), (122.2, 117.6), ilm_a]))
+    # IOUT の縦線 (x=166) とは表面で跨ぐ。裏面同士だと交差し、経路をずらすとルータがハングする
+    ilm_h1, ilm_h2 = (165.2, 110.0), (167.3, 111.4)
+    L.routes.append(("ADC_ILM_EXT", "B", 0.2, [ilm_a, (120.2, 101.5), (164.0, 101.5),
+                                               (164.0, 109.0), ilm_h1]))
+    L.routes.append(("ADC_ILM_EXT", "F", 0.2, [ilm_h1, ilm_h2]))
+    L.routes.append(("ADC_ILM_EXT", "B", 0.2, [ilm_h2, ilm_b]))
+    L.vias += [("ADC_ILM_EXT", *ilm_h1), ("ADC_ILM_EXT", *ilm_h2)]
+    L.routes.append(("ADC_ILM_EXT", "F", 0.2, [ilm_b, L.pad("R23", "2")]))
+    L.vias += [("ADC_ILM_EXT", *ilm_a), ("ADC_ILM_EXT", *ilm_b)]
+    # QSPI_SD2 だけフラッシュの下段ピンなので、他の 3 本と違い U7 の東を回って裏面で入れる
+    # ビアは SD0 の横引き (y=120.15) と SD3/SCLK/SD0 の縦引き (x<=131.4) の両方から離す
+    sd2_a, sd2_b = (132.1, 119.5), (136.835, 131.6)
+    L.routes.append(("QSPI_SD2", "F", 0.2, [L.pad("U6", "54"), (131.8, 118.9), sd2_a]))
+    L.routes.append(("QSPI_SD2", "B", 0.2, [sd2_a, (134.0, 121.8), (136.5, 126.0), sd2_b]))
+    L.routes.append(("QSPI_SD2", "F", 0.2, [sd2_b, L.pad("U7", "3")]))
+    L.vias += [("QSPI_SD2", *sd2_a), ("QSPI_SD2", *sd2_b)]
+    # I2C は U1・MCU・プルアップ (R42/R43) が基板の端から端に散っていて自動配線が通らないので、
+    # 2 本を平行レーンとして手配線する。SCL が内側 (x=140.6 / y=118.3)、SDA が外側 (x=139.4 / y=119.9)。
+    # 縦線は BB_EN の裏面配線 (y=115.6) を跨ぐ区間だけ表面に上げる
+    for net, pull, xv, ych in (("I2C_SCL", "R43", 140.6, 118.3), ("I2C_SDA", "R42", 139.4, 119.9)):
+        via_u1 = (152.2, 117.95) if net == "I2C_SCL" else (151.0, 119.4)
+        enter = (151.8, 118.3) if net == "I2C_SCL" else (150.0, 119.9)
+        top, hop_lo, hop_hi = (xv, 106.6), (xv, 117.0), (xv, 114.2)
+        L.routes.append((net, "B", 0.2, [via_u1, enter, (xv, ych), hop_lo]))
+        L.routes.append((net, "F", 0.2, [hop_lo, hop_hi]))
+        L.routes.append((net, "B", 0.2, [hop_hi, top]))
+        L.routes.append((net, "F", 0.2, [top, L.pad(pull, "2")]))
+        L.vias += [(net, *hop_lo), (net, *hop_hi), (net, *top)]
     # 上辺の抵抗列に 3V3 の母線を渡す
     L.routes.append(("+3V3", "F", 0.3, [(139.8, 103.4), (148.8, 103.4)]))
     for ref in ("R42", "R43", "R33", "R8", "R15", "R16", "R22", "R9", "R36"):
@@ -345,8 +392,13 @@ def _pd_input(L: Layout):
         pad = L.pad("U2", pin)
         L.routes.append((net, "F", 0.2, [pad, (179.5, pad[1]), via]))
         L.vias.append((net, *via))
-    L.routes.append(("ADC_ILM_EXT", "F", 0.2, [L.pad("R23", "2"), (172.9, 112.8)]))
-    L.vias.append(("ADC_ILM_EXT", 172.9, 112.8))
+    # EXT_OVLO は U2 と J2 の隙間 (x=180 付近) を裏面で下り、分圧抵抗 R19 に入る
+    # VBUS_EXT のビア列 (x=178.75 / 179.9 / 180.7) の隙間 x=179.32 を抜け、R17 のビアを避けて x=178.2 へ寄る
+    ovlo_end = (178.2, 119.6)
+    L.routes.append(("EXT_OVLO", "B", 0.2, [(180.35, 112.35), (180.35, 113.85), (179.32, 113.85), (179.32, 115.6),
+                                            (178.2, 116.8), ovlo_end]))
+    L.vias.append(("EXT_OVLO", *ovlo_end))
+    L.routes.append(("EXT_OVLO", "F", 0.2, [ovlo_end, (179.3, 120.0), L.pad("R19", "1"), L.pad("R18", "2")]))
     L.routes.append(("EXT_ILM", "F", 0.2, [L.pad("R21", "1"), (176.4, 112.23), L.pad("U2", "9")]))
     L.routes.append(("GND", "F", 0.2, [L.pad("U2", "8"), (176.05, 111.8)]))
     L.vias.append(("GND", 176.05, 111.8))
@@ -354,6 +406,9 @@ def _pd_input(L: Layout):
     # STUSB4500 の SCL は右側ピンからすぐ裏面へ
     L.routes.append(("I2C_SCL", "F", 0.2, [L.pad("U4", "7"), (173.5, 107.3)]))
     L.vias.append(("I2C_SCL", 173.5, 107.3))
+    # SDA も同じく U4 の脇でビアに落とす (SCL のビアとは 1.6mm 離す)
+    L.routes.append(("I2C_SDA", "F", 0.2, [L.pad("U4", "8"), (173.3, 106.75), (174.2, 105.8)]))
+    L.vias.append(("I2C_SDA", 174.2, 105.8))
     L.stub("VBUS_EXT", "C4", "1", (167.4, 108.4))
 
 
